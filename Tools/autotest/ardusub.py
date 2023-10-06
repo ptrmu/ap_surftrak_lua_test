@@ -6,6 +6,7 @@ AP_FLAKE8_CLEAN
 
 from __future__ import print_function
 import os
+import shutil
 import sys
 import time
 
@@ -228,6 +229,48 @@ class AutoTestSub(AutoTest):
         self.watch_distance_maintained()
 
         self.disarm_vehicle()
+
+    def install_test_modules_script(self, scriptname):
+        source = os.path.join(self.rootdir(), "libraries", "AP_Scripting", "tests", "modules", scriptname)
+        dest = os.path.join("scripts", "modules", scriptname)
+
+        destdir = os.path.dirname(dest)
+        if not os.path.exists(destdir):
+            os.mkdir(destdir)
+        self.progress("Copying (%s) to (%s)" % (source, dest))
+        shutil.copy(source, dest)
+
+    def install_test_modules_script_context(self, scriptname):
+        '''installs an test script which will be removed when the context goes
+        away'''
+        self.install_test_modules_script(scriptname)
+        self.context_get().installed_scripts.append(scriptname)
+
+    def RangeHoldNew(self):
+        """Test RNG_HOLD mode New"""
+
+        self.set_parameters({
+            "SCR_ENABLE": 1,
+            "RNGFND1_TYPE": 36,
+            "SCR_USER1": 2,   # Test parameter bundle ID
+            "SCR_USER2": 50.0,# Depth of bottom (m)
+            "SCR_USER3": 2.2, # Sub must stay closer than this to the desired depth (m)
+        })
+
+        self.install_test_script_context("range_hold_test.lua")
+        self.install_test_modules_script_context("synthetic_signal.lua")
+
+        def my_message_hook(mav, message):
+            if message.get_type() != 'STATUSTEXT':
+                return
+            if "Complete ** FAI" in message.text:
+                raise NotAchievedException("RangeHold failed to hold range")
+
+        self.install_message_hook_context(my_message_hook)
+
+        # let the test run
+        self.reboot_sitl()
+        self.delay_sim_time(150) # Takes a long time to run this test
 
     def ModeChanges(self, delta=0.2):
         """Check if alternating between ALTHOLD, STABILIZE, POSHOLD and RNG_HOLD (mode 21) affects altitude"""
@@ -591,6 +634,7 @@ class AutoTestSub(AutoTest):
             self.DiveManual,
             self.AltitudeHold,
             self.RangeHold,
+            self.RangeHoldNew,
             self.PositionHold,
             self.ModeChanges,
             self.DiveMission,
