@@ -1,10 +1,22 @@
 -- range_hold_test.lua
 -- Test the RangeHold mode in ArduSub.
+-- Peter Mullen October 2023
 --
--- The test implemented in this file drives a sub over an undulating bottom in RangeHold mode. 
+-- This file uses EmmyLua Annotattions
+-- https://luals.github.io/wiki/annotations/
+-- Too many annotations can make the code unreadable. They are used where they help with
+-- code completion, not necessarily with type safety.
+--
+-- This test uses a state machine to drive a sub over an undulating bottom in RangeHold mode. 
 -- The sub is configured to use a LUA Range Finder driver that is also implemented in this file.
 -- The test can compare the actual height of the sub above the bottom with the expected height and
 -- determine if the RangeHold mode is working.
+--
+-- For this test, the bottom pattern is radial around the sub starting point. It doesn't matter which 
+-- direction the sub moves. The following Parameters influence how the test is run:
+--  SCR_USER1 is a code for which synthetic bottom to generate.
+--  SCR_USER2 is the average bottom depth in meters
+--  SCR_USER3 is the max distance in meters the sub can get from the desired depth and pass the test.
 
 
 local TEST_NAME = "RANGE HOLD TEST"
@@ -30,7 +42,7 @@ local gcs_send_trim = (function()
 
     ---@param str1 string
     ---@param str2 string
-    return function(str1, str2)
+    local function func(str1, str2)
         if not str1 then return end
 
         local time_curr_s = millis():tofloat() / 1000.0
@@ -66,6 +78,8 @@ local gcs_send_trim = (function()
         gcs_send(send_str)
         gcs_send_times[str1] = time_curr_s
     end
+
+    return func
 end)()
 
 
@@ -74,6 +88,9 @@ end)()
 
 --region Classes
 
+-- An instance of the Context Class is used to communicate between different parts
+-- of this test. In particular, it carries data between the virtual range finder
+-- and the state machine that is running the test.
 ---@class Context
 ---@field dur_script_s number
 ---@field dur_state_s number
@@ -146,6 +163,13 @@ end)()
 
 --region Virtual range finder driver
 
+-- The sub must be configured to use this driver with the parameter:
+--  RNGFND1 = 36
+-- Once this driver is initialized it is called every time in the update loop.
+-- This driver is initialized in the first state of the test state machine.
+-- The synthetic_signal routines generate a synthetic bottom which is combined
+-- with the sub depth to get a virtual range measurement. This measument is 
+-- corrupted with noise and outliers and delayed before it is sent to ArduPilot.
 
 ---@param ctx Context
 local function get_synthetic_signal(ctx)
@@ -310,10 +334,19 @@ end
 
 --#region Test state machine
 
+-- This is a linear state machine. The states are listed in a table and are executed
+-- in the order in that table. The success and failure termination states are not in
+-- the table and are entered based on the value returned from the state funcs. The
+-- SRET_XXX variables define these possible return values.
+--
+-- Each state is implemented as a factory which return a function that is repeatedly
+-- executed. Initialization for the state happens in the factory code and clean up
+-- for the state happens when the repeat function decides to exit the state.
+--
 
-local SRET_SAME = 1
-local SRET_NEXT = 2
-local SRET_DONE_FAILURE = 3
+local SRET_SAME = 1         -- Execute this state again.
+local SRET_NEXT = 2         -- Execute the next state.
+local SRET_DONE_FAILURE = 3 -- An error occured, go to the failure termination state.
 
 
 local TEST_RANGE_1 = 8.0

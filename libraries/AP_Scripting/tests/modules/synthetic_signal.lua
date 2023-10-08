@@ -1,6 +1,69 @@
+-- synthetic_signal.lua
+-- Test the RangeHold mode in ArduSub.
+-- Peter Mullen October 2023
+--
+-- This file uses EmmyLua Annotattions
+-- https://luals.github.io/wiki/annotations/
+-- Too many annotations can make the code unreadable. They are used where they help with
+-- code completion, not necessarily with type safety.
+--
+-- This file is meant to be loaded with the "require" statement. The require statement
+-- will return a table with the following elements
+--  series_factory(amplitude_m, elements)
+--  add_noise_factory(mean, std_dev)
+--  add_outlier_factory(rate_ops, callback_interval_ms, mean, std_dev)
+--  add_delay_factory(delay_s, callback_interval_ms)
+--  CHIRP_G
+--  TOTAL_PERIOD_S
+--
+-- Each of the factory methods will return another function that can be called
+-- to generate a synthetic measurement. The series_factory() function takes a
+-- list of elements that are used to generate a synthetic series of data points.
+-- Here are examples that could be arguments to series_factory():
+--
+-- local TSERIES_ALL_S = 4.0
+-- local tseries_elements = {
+--     { TSERIES_ALL_S, "mid" },
+--     { TSERIES_ALL_S, "max" },
+--     { TSERIES_ALL_S, "mid" },
+--     { TSERIES_ALL_S, "saw" },
+--     { TSERIES_ALL_S, "square" },
+--     { TSERIES_ALL_S, "sin" },
+--     { TSERIES_ALL_S, "chirp" }
+-- }
+
+-- local TSERIES_RAMP_S = 8.0
+-- local tseries_elements_ramp = {
+--     { 0.5 * TSERIES_RAMP_S, "saw", 0.0,  0.25 },
+--     { 1.0 * TSERIES_RAMP_S, "max" },
+--     { 1.0 * TSERIES_RAMP_S, "saw", 0.25, 0.75 },
+--     { 1.0 * TSERIES_RAMP_S, "min" },
+--     { 0.5 * TSERIES_RAMP_S, "saw", 0.75, 1.0 }
+-- }
+
+-- local TSERIES_SQUARE_S = 30.0
+-- local tseries_elements_square = {
+--     { TSERIES_SQUARE_S, "square" }
+-- }
+
+-- local TSERIES_FLAT_S = 40.0
+-- local tseries_elements_flat = {
+--     { TSERIES_FLAT_S, "mid" }
+-- }
+
+-- local TSERIES_CHIRP_S = 20.0
+-- local tseries_elements_chirp = {
+--     { TSERIES_CHIRP_S, "mid" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 0), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 1), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 2), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 3), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 4), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 5), "chirp" },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 6), "chirp" }
+-- }
+
 local ss = {}
-
-
 
 local CHIRP_G = 1.5     -- in a single chirp period the frequency increases from f0 to f0 * CHIRP_G
 local CHIRP_F0 = 2 / (CHIRP_G + 1)
