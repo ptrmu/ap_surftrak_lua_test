@@ -254,23 +254,35 @@ class AutoTestSub(AutoTest):
             "RNGFND1_TYPE": 36,
             "SCR_USER1": 2,   # Test parameter bundle ID
             "SCR_USER2": 50.0,# Depth of bottom (m)
-            "SCR_USER3": 2.2, # Sub must stay closer than this to the desired depth (m)
+            "SCR_USER3": 2.0, # Sub must stay closer than this to the desired depth (m)
         })
 
         self.install_test_script_context("range_hold_test.lua")
         self.install_test_modules_script_context("synthetic_signal.lua")
 
+        test_complete = []
+
         def my_message_hook(mav, message):
             if message.get_type() != 'STATUSTEXT':
                 return
-            if "Complete ** FAI" in message.text:
+            if "Complete ** FAILURE!!" in message.text:
                 raise NotAchievedException("RangeHold failed to hold range")
+            if "Complete ** SUCCESS!!" in message.text:
+                test_complete.append(message)
 
+        # install a message hook that looks for the SUCCESS or FAILURE message
         self.install_message_hook_context(my_message_hook)
 
         # let the test run
         self.reboot_sitl()
-        self.delay_sim_time(150) # Takes a long time to run this test
+        self.delay_sim_time(10)  # Allow enough time for test to arm vehicle
+
+        timeout = 250
+        tstart = self.get_sim_time()
+        while len(test_complete) == 0:
+            if self.get_sim_time() - tstart > timeout:
+                raise AutoTestTimeoutException("Test timed out after %fs" % (timeout,))
+            self.delay_sim_time(10)
 
     def ModeChanges(self, delta=0.2):
         """Check if alternating between ALTHOLD, STABILIZE, POSHOLD and RNG_HOLD (mode 21) affects altitude"""

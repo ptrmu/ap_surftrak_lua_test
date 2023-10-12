@@ -19,7 +19,7 @@
 --  SCR_USER3 is the max distance in meters the sub can get from the desired depth and pass the test.
 
 
-local TEST_NAME = "RANGE HOLD TEST"
+local TEST_NAME = "RNGHLD"
 local UPDATE_PERIOD_MS = 20
 
 
@@ -213,8 +213,8 @@ local function get_synthetic_signal(ctx)
     if synsig_id == 2 then
         synsig = {
             depth_variation_func = ss.series_factory(4.0, series_elements_ramp),
-            add_noise_func = ss.add_noise_factory(0.0, 0.5),
-            add_outlier_func = ss.add_outlier_factory(0.5, UPDATE_PERIOD_MS, 10.0, 4.0),
+            add_noise_func = ss.add_noise_factory(0.0, 0.25),
+            add_outlier_func = ss.add_outlier_factory(0.5, UPDATE_PERIOD_MS, 8.0, 2.0),
             add_delay_func = ss.add_delay_factory(0.1, UPDATE_PERIOD_MS),
         }
     else
@@ -381,19 +381,19 @@ local function adjust_depth_factory(ctx_setup, range_idx)
         end
 
         if math.abs(delta) < DEPTH_MATCH_TOL_M then
-            gcs_send(string.format("Adjust depth complete. Depth = %.2fm", sub_depth_target_m))
+            gcs_send(string.format("Goto Depth Done = %.2fm", sub_depth_target_m))
             clean_up()
             return SRET_NEXT
         end
 
         if ctx.dur_state_s > DEPTH_ADJUST_TIMEOUT_S then
-            gcs_send(string.format("Adjust depth timout. Did not achieve %.2fm. Turn off QGC Joystick?", sub_depth_target_m))
+            gcs_send(string.format("Goto Depth timout. Did not achieve %.2fm. ?Is QGC Joystick disabled?", sub_depth_target_m))
             clean_up()
             return SRET_DONE_FAILURE
         end
 
-        gcs_send_trim(string.format("Adjust depth to %.2fm,", sub_depth_target_m),
-            string.format("%.2fm to go after %.2fs", delta, ctx.dur_state_s))
+        gcs_send_trim(string.format("Goto Depth %.2fm,", sub_depth_target_m),
+            string.format("%.2fm, %.2fs", delta, ctx.dur_state_s))
         return SRET_SAME
     end
 end
@@ -445,8 +445,8 @@ local function follow_bottom_factory(ctx_setup, target_distance_m)
             return SRET_DONE_FAILURE
         end
 
-        gcs_send_trim(string.format("Follow bottom for %.2fm,", target_distance_m),
-            string.format("%.2fm to go after %.2fs", delta, ctx.dur_state_s))
+        gcs_send_trim(string.format("FB %.2fm,", target_distance_m),
+            string.format("%.2fm, %.2fs, %.2f", delta, ctx.dur_state_s, range_delta))
         return SRET_SAME
     end
 end
@@ -565,7 +565,7 @@ end
 
 
 local function state_done_success_factory(ctx_setup)
-    gcs_send("** RangeHole Test Complete ** SUCCESS!!")
+    gcs_send("** Complete ** SUCCESS!!")
     return function()
         return SRET_SAME
     end
@@ -573,7 +573,7 @@ end
 
 local function state_done_failure_factory(ctx_setup)
     cleanup_test()
-    gcs_send("** RangeHole Test Complete ** FAILURE!!")
+    gcs_send("** Complete ** FAILURE!!")
     return function()
         return SRET_SAME
     end
