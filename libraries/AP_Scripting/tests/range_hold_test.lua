@@ -104,20 +104,9 @@ end)()
 ---@field match_tolerance_m number
 ---@field signal_period_m number
 
----@class SyntheticSignal
----@field series_factory fun(amplitude_m: number, elements: table[]): fun(x: number): number,number
----@field add_noise_factory fun(mean: number, std_dev: number): fun(x: number): number
----@field add_outlier_factory fun(rate_ops: number, callback_period_ms: number, mean: number, std_dev: number): fun(x: number): number
----@field add_delay_factory fun(delay_s: number, callback_interval_ms: number): fun(x: number): number
----@field TOTAL_PERIOD_S number
----@field CHIRP_G number
-
-
 ---@class Synsig
 ---@field depth_variation_func fun(x: number): number,number
 ---@field add_noise_func fun(x: number): number
----@field add_outlier_func fun(x: number): number
----@field add_delay_func fun(x: number): number
 
 
 --#endregion
@@ -172,10 +161,7 @@ end)()
 -- corrupted with noise and outliers and delayed before it is sent to ArduPilot.
 
 ---@param ctx Context
-local function get_synthetic_signal(ctx)
-
-    ---@type SyntheticSignal
-    local ss = require("synthetic_signal")
+local function load_param_settings(ctx)
 
     -- query SCR_USERx for parameters
     -- SCR_USER1 is a code for which synthetic bottom to generate
@@ -194,45 +180,52 @@ local function get_synthetic_signal(ctx)
         match_tolerance_m = 2.0
     end
 
-
-    local SERIES_RAMP_M = 10.0
-    local series_elements_ramp = {
-        { 0.5 * SERIES_RAMP_M, "mid" },
-        { 0.5 * SERIES_RAMP_M, "saw", 0.0,  0.25 },
-        { 1.0 * SERIES_RAMP_M, "max" },
-        { 1.0 * SERIES_RAMP_M, "saw", 0.25, 0.75 },
-        { 1.0 * SERIES_RAMP_M, "min" },
-        { 0.5 * SERIES_RAMP_M, "saw", 0.75, 1.0 },
-        { 0.5 * SERIES_RAMP_M, "mid" },
-    }
-
-
-    ---@type Synsig
-    local synsig
-
-    if synsig_id == 2 then
-        synsig = {
-            depth_variation_func = ss.series_factory(4.0, series_elements_ramp),
-            add_noise_func = ss.add_noise_factory(0.0, 0.25),
-            add_outlier_func = ss.add_outlier_factory(0.5, UPDATE_PERIOD_MS, 8.0, 2.0),
-            add_delay_func = ss.add_delay_factory(0.1, UPDATE_PERIOD_MS),
-        }
-    else
-        synsig = {
-            depth_variation_func = ss.series_factory(4.0, series_elements_ramp),
-            add_noise_func = ss.add_noise_factory(0.0, 0.0),
-            add_outlier_func = ss.add_outlier_factory(0.0, UPDATE_PERIOD_MS, 10.0, 4.0),
-            add_delay_func = ss.add_delay_factory(0.0, UPDATE_PERIOD_MS),
-        }
-    end
-
-    -- Save parameters to the context
     ctx.synsig_id = synsig_id
     ctx.bottom_depth_m = bottom_depth_m
     ctx.match_tolerance_m = match_tolerance_m
-    ctx.signal_period_m = ss.TOTAL_PERIOD_S
+end
 
-    return synsig
+
+---@param ctx Context
+local function get_synthetic_signal(ctx)
+
+    ---@type SyntheticSignal
+    local ss = require("synthetic_signal")
+
+    local SERIES_RAMP_M = 10.0
+    local series_elements_ramp = {
+        { 0.5 * SERIES_RAMP_M, ss.const_funcfact() },
+        { 0.5 * SERIES_RAMP_M, ss.saw_funcfact(), 0.0,  0.25 },
+        { 1.0 * SERIES_RAMP_M, ss.const_funcfact(1.0) },
+        { 1.0 * SERIES_RAMP_M, ss.saw_funcfact(), 0.25, 0.75 },
+        { 1.0 * SERIES_RAMP_M, ss.const_funcfact(-1.0) },
+        { 0.5 * SERIES_RAMP_M, ss.saw_funcfact(), 0.75, 1.0 },
+        { 0.5 * SERIES_RAMP_M, ss.const_funcfact() },
+    }
+
+    local depth_variation_func
+    local add_noise_func
+    local signal_period_m
+
+    if ctx.synsig_id == 2 then
+        depth_variation_func, signal_period_m = ss.series_funcfact(4.0, series_elements_ramp)
+        add_noise_func = ss.add_noise_funcfact(0.0, 0.25)
+        add_noise_func = ss.add_noise_funcfact(8.0, 2.0, 0.5, UPDATE_PERIOD_MS, add_noise_func)
+        add_noise_func = ss.add_delay_funcfac(0.1, UPDATE_PERIOD_MS)
+    else
+        depth_variation_func, signal_period_m = ss.series_funcfact(4.0, series_elements_ramp)
+        add_noise_func = ss.add_noise_funcfact(0.0, 0.0)
+        add_noise_func = ss.add_noise_funcfact(0.0, 0.0, 0.0, UPDATE_PERIOD_MS, add_noise_func)
+        add_noise_func = ss.add_delay_funcfac(0.1, UPDATE_PERIOD_MS)
+    end
+
+    -- Save period of the signal to the context
+     ctx.signal_period_m = signal_period_m
+
+    return {
+        depth_variation_func = depth_variation_func,
+        add_noise_func = add_noise_func,
+    }
 end
 
 
@@ -263,9 +256,7 @@ local function rngfnd_func_factory(lua_driver_backend, pos_origin, synsig)
         local rngfnd_true_m = sub_z_m - bottom_z_m
 
         -- Corrupt the measurment
-        local rngfnd_noise_m = synsig.add_noise_func(rngfnd_true_m)
-        local rngfnd_outlier_m = synsig.add_outlier_func(rngfnd_noise_m)
-        local rngfnd_m = synsig.add_delay_func(rngfnd_outlier_m)
+        local rngfnd_m = synsig.add_noise_func(rngfnd_true_m)
 
         -- Return a measurement to ArduPilot
         if rngfnd_m > 0 then
@@ -319,6 +310,9 @@ local function rngfnd_init(ctx)
         gcs_send_trim("Could not get a position from the AHRS.", "Will keep trying")
         return
     end
+
+    -- Read the settings parameters for this test.
+    load_param_settings(ctx)
 
     -- Get the object that generates the synthetic signal
     local synsig = get_synthetic_signal(ctx)

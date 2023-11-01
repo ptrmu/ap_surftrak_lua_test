@@ -9,138 +9,142 @@
 --
 -- This file is meant to be loaded with the "require" statement. The require statement
 -- will return a table with the following elements
---  series_factory(amplitude_m, elements)
---  add_noise_factory(mean, std_dev)
---  add_outlier_factory(rate_ops, callback_interval_ms, mean, std_dev)
---  add_delay_factory(delay_s, callback_interval_ms)
---  CHIRP_G
---  TOTAL_PERIOD_S
+--  const_funcfact
+--  scale_funcfact
+--  square_funcfact
+--  saw_funcfact
+--  sin_funcfact
+--  chirp_funcfact
+--  CHIRP_G number
+--  series_funcfact
+--  add_noise_funcfact
+--  add_delay_funcfac
 --
--- Each of the factory methods will return another function that can be called
--- to generate a synthetic measurement. The series_factory() function takes a
--- list of elements that are used to generate a synthetic series of data points.
--- Here are examples that could be arguments to series_factory():
+-- Each of the funcfact methods will return another function. The series_funcfact() 
+-- takes a list of elements that are used to generate a synthetic series of data points.
+-- Here are examples that could be arguments to series_funcfact():
 --
--- local TSERIES_ALL_S = 4.0
--- local tseries_elements = {
---     { TSERIES_ALL_S, "mid" },
---     { TSERIES_ALL_S, "max" },
---     { TSERIES_ALL_S, "mid" },
---     { TSERIES_ALL_S, "saw" },
---     { TSERIES_ALL_S, "square" },
---     { TSERIES_ALL_S, "sin" },
---     { TSERIES_ALL_S, "chirp" }
--- }
-
 -- local TSERIES_RAMP_S = 8.0
 -- local tseries_elements_ramp = {
---     { 0.5 * TSERIES_RAMP_S, "saw", 0.0,  0.25 },
---     { 1.0 * TSERIES_RAMP_S, "max" },
---     { 1.0 * TSERIES_RAMP_S, "saw", 0.25, 0.75 },
---     { 1.0 * TSERIES_RAMP_S, "min" },
---     { 0.5 * TSERIES_RAMP_S, "saw", 0.75, 1.0 }
+--     { 0.5 * TSERIES_RAMP_S, ss.saw_funcfact(), 0.0,  0.25 },
+--     { 1.0 * TSERIES_RAMP_S, ss.const_funcfact(1.0) },
+--     { 1.0 * TSERIES_RAMP_S, ss.saw_funcfact(), 0.25, 0.75 },
+--     { 1.0 * TSERIES_RAMP_S, ss.const_funcfact(-1.0) },
+--     { 0.5 * TSERIES_RAMP_S, ss.saw_funcfact(), 0.75, 1.0 }
 -- }
 
 -- local TSERIES_SQUARE_S = 30.0
 -- local tseries_elements_square = {
---     { TSERIES_SQUARE_S, "square" }
+--     { TSERIES_SQUARE_S, ss.square_funcfact() }
+-- }
+
+-- local TSERIES_MINUS_SIN_S = 30.0
+-- local tseries_elements_minus_sin = {
+--     { TSERIES_MINUS_SIN_S, ss.scale_funcfact(-1.0, ss.sin_funcfact()) }
+-- }
+
+-- local TSERIES_COS_S = 15.0
+-- local tseries_elements_cos = {
+--     { TSERIES_COS_S, ss.const_funcfact(1.0) },
+--     { TSERIES_COS_S, ss.sin_funcfact(), 0.25 }
 -- }
 
 -- local TSERIES_FLAT_S = 40.0
 -- local tseries_elements_flat = {
---     { TSERIES_FLAT_S, "mid" }
+--     { TSERIES_FLAT_S, ss.const_funcfact() }
 -- }
 
 -- local TSERIES_CHIRP_S = 20.0
 -- local tseries_elements_chirp = {
---     { TSERIES_CHIRP_S, "mid" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 0), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 1), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 2), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 3), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 4), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 5), "chirp" },
---     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 6), "chirp" }
+--     { TSERIES_CHIRP_S, ss.const_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 0), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 1), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 2), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 3), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 4), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 5), ss.chirp_funcfact() },
+--     { TSERIES_CHIRP_S / (ss.CHIRP_G ^ 6), ss.chirp_funcfact() }
 -- }
+--
 
-local ss = {}
-
-local CHIRP_G = 1.5     -- in a single chirp period the frequency increases from f0 to f0 * CHIRP_G
-local CHIRP_F0 = 2 / (CHIRP_G + 1)
-local CHIRP_C =  CHIRP_F0 * (CHIRP_G - 1) / 2.0
-
-ss.CHIRP_G = CHIRP_G
-ss.TOTAL_PERIOD_S = 0.0
 
 
 -- return a function of t
 --  domain 0. .. 1.
 --  range -1. .. 1.
-local function series_func(series_type)
-    if series_type == "max" then
-        return function(t)
+local function const_funcfact(value)
+    if value == nil then
+        value = 0.0
+    end
+    return function(t)
+        return value
+    end
+end
+
+local function scale_funcfact(factor, pre_func)
+    if not pre_func then
+        return const_funcfact()
+    end
+    if factor == 1.0 then
+        return pre_func
+    end
+    return function(t) return factor * pre_func(t) end
+end
+
+local function square_funcfact()
+    return function(t)
+        if t < 0.5 then
             return 1.0
         end
+        return -1.0
     end
+end
 
-    if series_type == "min" then
-        return function(t)
-            return -1.0
-        end
-    end
-
-    if series_type == "sin" then
-        return function(t)
-            return math.sin(t * 2.0 * math.pi)
-        end
-    end
-
-    -- square wave
-    if series_type == "square" then
-        return function(t)
-            if t < 0.5 then
-                return 1.0
-            end
-            return -1.0
-        end
-    end
-
-    if series_type == "saw" then
-        return function(t)
-            if t < 0.25 then
-                return 4.0 * t
-            end
-            if t < 0.75 then
-                return -4.0 * t + 2.0
-            end
-            return 4.0 * t - 4.0
-        end
-    end
-
-    if series_type == 'chirp' then
-        return function(t)
-            return math.sin(2.0 * math.pi * (CHIRP_C * t * t + CHIRP_F0 * t))
-        end
-    end
-
+local function saw_funcfact()
     return function(t)
-        return 0.0
+        if t < 0.25 then
+            return 4.0 * t
+        end
+        if t < 0.75 then
+            return -4.0 * t + 2.0
+        end
+        return 4.0 * t - 4.0
+    end
+end
+
+local function sin_funcfact()
+    return function(t)
+        return math.sin(t * 2.0 * math.pi)
+    end
+end
+
+local CHIRP_G = 1.5     -- default value for chirp_g
+
+---@param chirp_g number  -- in a single chirp period the frequency increases from f0 to f0 * chirp_g
+local function chirp_funcfact(chirp_g)
+    if chirp_g == nil then
+        chirp_g = CHIRP_G
+    end
+    local chirp_f0 = 2 / (chirp_g + 1)
+    local chirp_c =  chirp_f0 * (chirp_g - 1) / 2.0
+    return function(t)
+        return math.sin(2.0 * math.pi * (chirp_c * t * t + chirp_f0 * t))
     end
 end
 
 
 -- each element of the elements table
 --  time in seconds
---  function 'min', 'max', 'sin', 'square', 'saw', 'chirp'
+--  function f(t) => domain 0.0 .. 1.0, range -1.0 .. 1.0
 --  begin phase 0.0 - 1.0
---  end phase 0.0 - 1.0
+--  end phase 0.0 - 1.0+ if nil: begin phase + 1.0
 --
 -- Return a function of t described by the elements table
 --  amplitude
 --  elements
 -- NOTE: time or t is the independent variable to these functions. Any type of independent
---   variable also works. For example: it would be useful to use distance the t arguemnt.
-function ss.series_factory(amplitude_m, elements)
+--   variable also works. For example: it would be useful to use distance in the t arguemnt.
+local function series_funcfact(amplitude_m, elements)
     -- indicies into an element
     local IDX_DUR = 1
     local IDX_FUNC = 2
@@ -155,23 +159,22 @@ function ss.series_factory(amplitude_m, elements)
     local dur_total_s = 0.0
 
     for i, e in ipairs(elements) do
-        e[IDX_FUNC] = series_func(e[IDX_FUNC])
 
-        if not e[IDX_DUR] or e[IDX_DUR] <= 0 then
+        if not e[IDX_DUR] or e[IDX_DUR] <= 0.0 then
             e[IDX_DUR] = 1.0
         end
         if not e[IDX_FUNC] then
-            e[IDX_FUNC] = series_func("")
+            e[IDX_FUNC] = const_funcfact(0.0)
         end
-        if not e[IDX_PBEG] then
+        if e[IDX_PBEG] == nil then
             e[IDX_PBEG] = 0.0
         end
-        if not e[IDX_PEND] then
-            e[IDX_PEND] = 1.0
+        if e[IDX_PEND] == nil then
+            e[IDX_PEND] = e[IDX_PBEG] + 1.0
         end
 
         -- insure the phase beg/end is valid
-        if e[IDX_PBEG] < 0 or e[IDX_PEND] - e[IDX_PBEG] < 1.0e-6 or e[IDX_PEND] > 1.0 then
+        if e[IDX_PEND] - e[IDX_PBEG] < 1.0e-6 then
             e[IDX_PBEG] = 0.0
             e[IDX_PEND] = 1.0
         end
@@ -185,12 +188,10 @@ function ss.series_factory(amplitude_m, elements)
         e[IDX_TEND] = dur_total_s
     end
 
-    ss.TOTAL_PERIOD_S = dur_total_s
-
     local idx_curr = 1
     local t_base_s = -1
 
-    return function(t_now_s)
+    local function func(t_now_s)
         -- Initialize on the first invocation
         if t_base_s < 0 then
             t_base_s = t_now_s
@@ -213,44 +214,65 @@ function ss.series_factory(amplitude_m, elements)
         local t_element_s = t_cycle_s - e[IDX_TBEG]
 
         -- adjust the phase
-        local t_phase = t_element_s * e[IDX_PSCALE] + e[IDX_PBEG]
+        local t_phase = math.fmod(t_element_s * e[IDX_PSCALE] + e[IDX_PBEG], 1.0)
 
         -- evaluate the function
         local value = e[IDX_FUNC](t_phase) * amplitude_m
 
         return t_cycle_s, value
     end
+
+    return func, dur_total_s
 end
 
 
-local function identity_func()
+local function identity_funcfact(pre_func)
+    if pre_func then
+        return pre_func
+    end
     return function(m) return m end
 end
 
 
-function ss.add_noise_factory(mean, std_dev)
-    if mean == 0.0 and std_dev == 0.0 then
-        return identity_func()
-    end
-
-    if std_dev == 0.0 then
-        return function(m) return m + mean end
-    end
+local function add_noise_funcfact(mean, std_dev, rate_ops, callback_interval_ms, pre_func)
 
     -- Use the Box-Muller algorithm to generate normally distributed error that is added to the sample.
-    return function(m)
+    local function box_muller_func(m)
         return m + mean + std_dev * math.sqrt(-2 * math.log(math.random())) * math.cos(2 * math.pi * math.random())
     end
-end
 
+    local function noise_funcfact()
+        if mean == 0.0 and std_dev == 0.0 then
+            return identity_funcfact(pre_func)
+        end
 
-function ss.add_outlier_factory(rate_ops, callback_interval_ms, mean, std_dev)
+        if std_dev == 0.0 and pre_func then
+            return function(m) return pre_func(m) + mean end
+        end
+
+        if std_dev == 0.0 then
+            return function(m) return m + mean end
+        end
+
+        if pre_func then
+            return function(m) return box_muller_func(pre_func(m)) end
+        end
+
+        return box_muller_func
+    end
+
+    -- Just simple normally distributed noise
+    if rate_ops == nil then
+        return noise_funcfact()
+    end
+
+    -- Use poisson distribution to generate outliers
     if rate_ops == 0.0 then
-        return identity_func()
+        return identity_funcfact(pre_func)
     end
 
     -- Create a function to generate outliers
-    local outlier_func = ss.add_noise_factory(mean, std_dev)
+    local outlier_func = noise_funcfact()
 
     -- Rate of outlier events in a callback interval
     local rate_opi = rate_ops * callback_interval_ms / 1000.0
@@ -263,25 +285,28 @@ function ss.add_outlier_factory(rate_ops, callback_interval_ms, mean, std_dev)
         if math.random() > poisson_prob_zero then
             return outlier_func(m)
         end
+        if pre_func then
+            return pre_func(m)
+        end
         return m
     end
 end
 
 
-function ss.add_delay_factory(delay_s, callback_interval_ms)
- 
+local function add_delay_funcfac(delay_s, callback_interval_ms, pre_func)
+
     if delay_s == 0.0 or callback_interval_ms == 0 then
-        return identity_func()
+        return identity_funcfact(pre_func)
     end
 
     local delay_line = {}
     local delay_count = math.ceil(delay_s / callback_interval_ms * 1000.0)
     if delay_count <= 0 then
-        return identity_func()
+        return identity_funcfact(pre_func)
     end
 
     local next_idx = -1
-    return function(m)
+    local function add_delay_func(m)
         if next_idx < 1 then
             for i = 1, delay_count do
                 delay_line[i] = m
@@ -297,7 +322,39 @@ function ss.add_delay_factory(delay_s, callback_interval_ms)
         end
         return m_delay
     end
+
+    if pre_func then
+        return function(m) return add_delay_func(pre_func(m)) end
+    end
+
+    return add_delay_func
 end
 
+
+---@class SyntheticSignal
+---@field const_funcfact fun(value: number|nil): fun(t: number): number
+---@field scale_funcfact fun(factor: number, pre_func: fun(t: number): number): fun(t: number): number
+---@field square_funcfact fun(): fun(t: number): number
+---@field saw_funcfact fun(): fun(t: number): number
+---@field sin_funcfact fun(): fun(t: number): number
+---@field chirp_funcfact fun(chirp_g: number|nil): fun(t: number): number
+---@field CHIRP_G number
+---@field series_funcfact fun(amplitude_m: number, elements: table): fun(x: number): number, number
+---@field add_noise_funcfact fun(mean: number, std_dev: number, rate_ops: number|nil, callback_period_ms: number|nil, pre_func: nil|fun(x:number): number): fun(x: number): number
+---@field add_delay_funcfac fun(delay_s: number, callback_interval_ms: number, pre_func: nil|fun(x:number): number): fun(x: number): number
+
+---@type SyntheticSignal
+local ss = {
+    const_funcfact = const_funcfact,
+    scale_funcfact = scale_funcfact,
+    square_funcfact = square_funcfact,
+    saw_funcfact = saw_funcfact,
+    sin_funcfact = sin_funcfact,
+    chirp_funcfact = chirp_funcfact,
+    CHIRP_G = CHIRP_G,
+    series_funcfact = series_funcfact,
+    add_noise_funcfact = add_noise_funcfact,
+    add_delay_funcfac = add_delay_funcfac,
+}
 
 return ss
